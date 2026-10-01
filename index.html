@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Spaceship Game</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- The game area. Same size as the Figma frame "Game Screen" (402 x 874). -->
+  <div id="game">
+
+    <!-- Figma layer: "Timer" -->
+    <div id="timer">
+      <span>Time:</span>
+      <span id="timer-text">0m 0s</span>
+    </div>
+
+    <!-- Figma layer: "Player" -->
+    <img id="player" src="assets/player.svg" alt="Spaceship">
+
+    <!-- Monsters and bullets are added here by game.js while you play. -->
+
+    <!-- Shown only when you lose -->
+    <div id="game-over" hidden>
+      <h1>GAME OVER</h1>
+      <p>You survived <span id="final-time">0m 0s</span></p>
+      <button id="restart-button">Restart</button>
+    </div>
+
+  </div>
+
+  <script src="game.js"></script>
+</body>
+</html>

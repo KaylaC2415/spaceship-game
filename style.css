@@ -1,0 +1,94 @@
+/* Page: center the game horizontally */
+body {
+  margin: 0;
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  justify-content: center;
+  background: #000;
+  font-family: 'Inter', sans-serif;
+}
+
+/* Game area: Figma frame "Game Screen" */
+#game {
+  position: relative;          /* children are placed with x/y inside this box */
+  width: 402px;
+  height: 874px;
+  background: #101010;
+  overflow: hidden;            /* hide anything outside the game area */
+  transform-origin: top center; /* used when shrinking to fit small screens */
+}
+
+/* Figma layer "Timer" */
+#timer {
+  position: absolute;
+  left: 12px;
+  top: 12px;
+  z-index: 5;                  /* stay on top of monsters */
+  display: flex;
+  gap: 5px;
+  padding: 3px 10px;
+  background: #515151;
+  color: #fff;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.48px;
+}
+
+/* Figma layer "Player". Its x (left) is set by game.js. */
+#player {
+  position: absolute;
+  top: 653px;
+}
+
+/* Monsters and bullets get their x/y from game.js */
+.monster,
+.bullet {
+  position: absolute;
+}
+
+/* Bullet: not in Figma, so it's a small bar in the spaceship's yellow */
+.bullet {
+  width: 4px;
+  height: 12px;
+  background: #F8D15C;
+  border-radius: 2px;
+}
+
+/* Game over screen, covers the whole game area */
+#game-over {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: rgba(16, 16, 16, 0.85);
+  color: #fff;
+}
+
+#game-over[hidden] {
+  display: none;
+}
+
+#game-over h1 {
+  margin: 0;
+  font-size: 40px;
+}
+
+#game-over p {
+  margin: 0 0 16px;
+  font-size: 16px;
+}
+
+#restart-button {
+  padding: 8px 20px;
+  border: none;
+  background: #F8D15C;
+  color: #101010;
+  font: inherit;
+  font-size: 16px;
+  cursor: pointer;
+}
