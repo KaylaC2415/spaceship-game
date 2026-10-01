@@ -1,3 +1,34 @@
+/* Feel tuning: time values in ms; 0.96 means start at 96% size. */
+:root {
+  --game-yellow: #f3d55b;
+  --overlay-title-start-scale: 0.96;
+  --overlay-title-duration: 800ms; /* one direction; full loop = 1600ms */
+  --score-reveal-delay: 100ms;
+  --score-reveal-duration: 140ms;
+}
+
+/* Inter font, saved in assets/fonts so the exact weights always load */
+@font-face {
+  font-family: 'Inter';
+  src: url('assets/fonts/Inter-Medium.woff') format('woff');
+  font-weight: 500;   /* Medium */
+  font-display: block;
+}
+
+@font-face {
+  font-family: 'Inter';
+  src: url('assets/fonts/Inter-SemiBold.woff') format('woff');
+  font-weight: 600;   /* Semi Bold */
+  font-display: block;
+}
+
+@font-face {
+  font-family: 'Inter';
+  src: url('assets/fonts/Inter-Bold.woff') format('woff');
+  font-weight: 700;   /* Bold */
+  font-display: block;
+}
+
 /* Page: center the game horizontally */
 body {
   margin: 0;
@@ -14,7 +45,7 @@ body {
   position: relative;          /* children are placed with x/y inside this box */
   width: 402px;
   height: 874px;
-  background: #101010;
+  background: #101010 url('assets/background.jpg') center / cover no-repeat;
   overflow: hidden;            /* hide anything outside the game area */
   transform-origin: top center; /* used when shrinking to fit small screens */
 }
@@ -27,18 +58,44 @@ body {
   z-index: 5;                  /* stay on top of monsters */
   display: flex;
   gap: 5px;
-  padding: 3px 10px;
-  background: #515151;
+  padding: 5px 15px;
+  border-radius: 20px;
+  background: #44218a;
   color: #fff;
   font-size: 16px;
   font-weight: 600;
   letter-spacing: -0.48px;
 }
 
+/* Figma layer "Pause" (top-right hint) */
+#pause-hint {
+  position: absolute;
+  top: 17px;
+  right: 15px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: #fff;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.48px;
+}
+
+#pause-hint .key-small {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 5px;
+  background: #3d3d3d;
+}
+
 /* Figma layer "Player". Its x (left) is set by game.js. */
 #player {
   position: absolute;
-  top: 653px;
+  top: 688px;
 }
 
 /* Monsters and bullets get their x/y from game.js */
@@ -51,44 +108,198 @@ body {
 .bullet {
   width: 4px;
   height: 12px;
-  background: #F8D15C;
+  background: #F3D55B;   /* yellow from the new spaceship */
   border-radius: 2px;
 }
 
-/* Game over screen, covers the whole game area */
-#game-over {
+/* Figma layer "Stamina Indicator" */
+#stamina {
+  position: absolute;
+  left: 318px;
+  top: 785px;
+  z-index: 5;
+  width: 76px;
+  height: 76px;
+}
+
+#stamina svg {
+  display: block;
+  transform: rotate(-90deg);   /* ring starts at 12 o'clock */
+}
+
+#stamina-ring {
+  fill: none;
+  stroke: #85B700;
+  stroke-width: 10;
+  stroke-dasharray: 100;       /* the ring's full length (pathLength) */
+  stroke-dashoffset: 0;        /* 0 = full ring, 100 = empty ring */
+}
+
+#stamina img {
+  position: absolute;
+  left: 21px;
+  top: 21px;
+}
+
+/* ---------- Overlays (Pause + Game Over) ---------- */
+
+/* Dark see-through layer covering the whole game area */
+.overlay {
   position: absolute;
   inset: 0;
   z-index: 10;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  background: rgba(16, 16, 16, 0.85);
-  color: #fff;
+  background: rgba(0, 0, 0, 0.5);
 }
 
-#game-over[hidden] {
+.overlay[hidden] {
   display: none;
 }
 
-#game-over h1 {
+/* The purple card in the middle */
+.overlay-card {
+  box-sizing: border-box;
+  width: 322px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 30px;
+  background: #12072d;
+  font-weight: 700;            /* Bold, unless a class below says otherwise */
+  border: 3px solid #44218a;
+  border-radius: 20px;
+}
+
+.overlay-title {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.overlay h2 {
   margin: 0;
-  font-size: 40px;
+  color: #c0a3fb;
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.84px;
+  text-transform: uppercase;
 }
 
-#game-over p {
-  margin: 0 0 16px;
-  font-size: 16px;
+/* Round pause icon with two bars */
+.pause-icon {
+  width: 50px;
+  height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  border-radius: 100px;
+  background: #44218a;
 }
 
-#restart-button {
-  padding: 8px 20px;
-  border: none;
-  background: #F8D15C;
-  color: #101010;
-  font: inherit;
-  font-size: 16px;
-  cursor: pointer;
+.pause-icon span {
+  width: 7.7px;
+  height: 22px;
+  border-radius: 2px;
+  background: #d9d9d9;
+}
+
+/* "Tap [key] to ..." line */
+.instruction {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #fff;
+  font-size: 20px;
+  letter-spacing: -0.6px;
+  white-space: nowrap;
+}
+
+/* "Tap" and "to resume / to restart" */
+.text-medium {
+  font-weight: 500;            /* Medium */
+}
+
+#game-over .instruction {
+  gap: 6px;
+}
+
+/* Grey keyboard key */
+.key {
+  padding: 4px 20px;
+  border-radius: 5px;
+  background: #3d3d3d;
+  font-weight: 600;            /* Semi Bold */
+}
+
+#pause-overlay .key {
+  box-sizing: border-box;
+  width: 40px;
+  padding: 4px 0;
+  text-align: center;
+}
+
+/* Game over score */
+.score {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.score-label {
+  padding: 0 10px;
+  border-radius: 20px;
+  background: var(--game-yellow);
+  color: #12072d;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.6px;
+  text-transform: uppercase;
+}
+
+.score-time {
+  color: var(--game-yellow);
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.84px;
+}
+
+/* Each reveal restarts when its existing overlay becomes visible. */
+.overlay:not([hidden]) h2 {
+  animation: overlay-title-in var(--overlay-title-duration) ease-in-out infinite alternate;
+}
+
+#game-over:not([hidden]) .score {
+  animation: score-in var(--score-reveal-duration) ease-out var(--score-reveal-delay) both;
+}
+
+@keyframes overlay-title-in {
+  from { transform: scale(var(--overlay-title-start-scale)); }
+  to { transform: scale(1); }
+}
+
+@keyframes score-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.muzzle-flash {
+  position: absolute;
+  pointer-events: none;
+  border-radius: 50%;
+  background: radial-gradient(ellipse, #fff 0 25%, var(--game-yellow) 50%, transparent 75%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .overlay:not([hidden]) h2,
+  #game-over:not([hidden]) .score {
+    animation-iteration-count: 1;
+    animation-duration: 1ms;
+    animation-delay: 0ms;
+  }
 }
