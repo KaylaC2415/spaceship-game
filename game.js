@@ -5,8 +5,8 @@
 const GAME_WIDTH = 402;
 const GAME_HEIGHT = 874;
 
-const PLAYER_WIDTH = 101 * 0.8;
-const PLAYER_HEIGHT = 102 * 0.8;
+const PLAYER_WIDTH = 101 * 0.64;
+const PLAYER_HEIGHT = 102 * 0.64;
 const PLAYER_START_X = (GAME_WIDTH - PLAYER_WIDTH) / 2;   // centered at the current size
 const PLAYER_Y = 688;         // Figma "Player" y
 const PLAYER_SPEED = 300;     // pixels per second
@@ -16,11 +16,27 @@ const BULLET_HEIGHT = 12;
 const BULLET_SPEED = 600;     // pixels per second
 
 const MONSTER_SPEED = 80;     // pixels per second
-const SECONDS_BETWEEN_MONSTERS = 1.5;
+// Shared spawn frequency for monsters and meteors, based on active survival time.
+const SPAWN_DIFFICULTY = {
+  startIntervalSeconds: 1.5,
+  minIntervalSeconds: 1.2,
+  rampSeconds: 20, // reach one spawn every 1.2 seconds at 20s, then stay there
+};
+
+const MONSTER_SWAY = {
+  startSeconds: 45,
+  amplitudePx: 12,         // maximum sideways offset from the spawn position
+  periodSeconds: 3,        // time for one left/right cycle
+  fadeInSeconds: 2,        // introduce movement gently when sideways movement starts
+};
 
 // Stamina is measured in percentage points (0–100).
 const STAMINA = {
   costPerShot: 10,
+  restorePerKill: 8,       // percentage points awarded once per monster
+  rewardEffectMs: 500,
+  rewardRadiusPx: 42,      // outside the ring: radius 33 + half of its 10px stroke
+  rewardParticleCount: 20,
   rechargeSeconds: 5,       // time from empty to full, after the delay
   rechargeDelaySeconds: 0.3,
   green: '#85B700',
@@ -223,11 +239,17 @@ function moveBullets(dt) {
 // =====================================================
 // MONSTERS
 // =====================================================
+function currentSpawnInterval() {
+  const progress = Math.min(1, elapsedTime / 1000 / SPAWN_DIFFICULTY.rampSeconds);
+  return SPAWN_DIFFICULTY.startIntervalSeconds +
+    (SPAWN_DIFFICULTY.minIntervalSeconds - SPAWN_DIFFICULTY.startIntervalSeconds) * progress;
+}
+
 function spawnMonsters(dt) {
   secondsUntilNextMonster -= dt;
   if (secondsUntilNextMonster > 0) return;
 
-  secondsUntilNextMonster = SECONDS_BETWEEN_MONSTERS;
+  secondsUntilNextMonster = currentSpawnInterval();
 
   const type = MONSTER_TYPES[Math.floor(Math.random() * MONSTER_TYPES.length)];
 
@@ -252,10 +274,39 @@ function spawnMonsters(dt) {
 
 function moveMonsters(dt) {
   monsters.forEach(m => {
+    m.previousX = m.x;
     m.previousY = m.y;
+    if (!m.isMeteor) {
+      m.spawnX ??= m.x;
+      m.swayPhase ??= Math.random() * Math.PI * 2;
+      const swayTime = Math.max(0, elapsedTime / 1000 + dt - MONSTER_SWAY.startSeconds);
+      const strength = Math.min(1, swayTime / MONSTER_SWAY.fadeInSeconds);
+      m.x = Math.max(0, Math.min(GAME_WIDTH - m.width, m.spawnX +
+        Math.sin(swayTime * Math.PI * 2 / MONSTER_SWAY.periodSeconds + m.swayPhase) *
+        MONSTER_SWAY.amplitudePx * strength));
+    }
     m.y += MONSTER_SPEED * dt;
     placeElement(m.el, m.x, m.y);
   });
+}
+
+// Sweep both axes: sideways motion must be included when checking a bullet hit.
+function bulletHitTime(b, m) {
+  let enter = 0, leave = 1;
+  for (const [start, travel, min, max] of [
+    [b.x - (m.previousX ?? m.x), -(m.x - (m.previousX ?? m.x)), -b.width, m.width],
+    [b.previousY - m.previousY, (b.y - b.previousY) - (m.y - m.previousY), -b.height, m.height],
+  ]) {
+    if (travel === 0) {
+      if (start < min || start > max) return null;
+      continue;
+    }
+    const a = (min - start) / travel, z = (max - start) / travel;
+    enter = Math.max(enter, Math.min(a, z));
+    leave = Math.min(leave, Math.max(a, z));
+    if (enter > leave) return null;
+  }
+  return enter;
 }
 
 // Process contacts in travel order, including the instant a monster hits bottom.
@@ -264,14 +315,8 @@ function checkBulletHits() {
   bullets.forEach(b => {
     monsters.forEach(m => {
       if (m.isMeteor) return; // bullets fly through meteors
-      if (b.x >= m.x + m.width || b.x + b.width <= m.x) return;
-      const distance = b.previousY - (m.previousY + m.height);
-      const travel = (b.previousY - b.y) + (m.y - m.previousY);
-      const alreadyTouching = distance <= 0 && b.previousY + b.height >= m.previousY;
-      const at = alreadyTouching ? 0 : distance / travel;
-      if ((alreadyTouching || distance > 0) && at >= 0 && at <= 1) {
-        events.push({ at, b, m });
-      }
+      const at = bulletHitTime(b, m);
+      if (at !== null) events.push({ at, b, m });
     });
   });
   monsters.forEach(m => {
@@ -294,6 +339,11 @@ function checkBulletHits() {
       event.b.used = true;
       event.m.hp -= 1;
       if (event.m.hp > 0) showHitEffect(event.m.el);
+      else {
+        const before = stamina;
+        setStamina(stamina + STAMINA.restorePerKill);
+        if (stamina > before) showStaminaReward();
+      }
     }
   }
 
@@ -431,6 +481,31 @@ function clearEffects() {
   transientElements.clear();
 }
 
+function showStaminaReward() {
+  const ring = document.createElement('div');
+  ring.className = 'stamina-reward';
+  ring.setAttribute('aria-hidden', 'true');
+  ring.style.color = staminaRingEl.style.stroke;
+  for (let i = 0; i < STAMINA.rewardParticleCount; i++) {
+    const spark = document.createElement('span');
+    const angle = i * Math.PI * 2 / STAMINA.rewardParticleCount;
+    spark.style.left = (38 + Math.cos(angle) * STAMINA.rewardRadiusPx) + 'px';
+    spark.style.top = (38 + Math.sin(angle) * STAMINA.rewardRadiusPx) + 'px';
+    ring.appendChild(spark);
+  }
+  document.getElementById('stamina').appendChild(ring);
+  transientElements.add(ring);
+  playEffect(ring, [
+    { opacity: 0, transform: 'scale(1)' },
+    { opacity: 1, transform: 'scale(1)', offset: 0.1 },
+    { opacity: 1, transform: 'scale(1.01)', offset: 0.55 },
+    { opacity: 0, transform: 'scale(1.02)' },
+  ], STAMINA.rewardEffectMs, () => {
+    ring.remove();
+    transientElements.delete(ring);
+  });
+}
+
 function showShotEffect() {
   playEffect(playerEl, [
     { transform: 'translateY(0)' },
@@ -524,9 +599,10 @@ function fitToScreen() {
 const movementKeys = new Set(['ArrowLeft', 'ArrowRight', 'KeyA', 'KeyD']);
 
 document.addEventListener('keydown', e => {
-  // Game over screen: Space restarts
+  // Game over screen: S restarts; Space leaves the score visible.
   if (!isRunning) {
-    if (e.code === 'Space') {
+    if (e.code === 'Space') e.preventDefault();
+    if (e.code === 'KeyS') {
       e.preventDefault();
       if (!e.repeat) startGame();
     }

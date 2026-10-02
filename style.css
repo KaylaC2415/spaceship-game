@@ -303,3 +303,20 @@ body {
     animation-delay: 0ms;
   }
 }
+
+/* Brief particle ring for stamina restored by a kill. */
+.stamina-reward {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.stamina-reward span {
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  background: #fff;
+  box-shadow: 0 0 3px 1px #fff, 0 0 8px 3px currentColor;
+}
