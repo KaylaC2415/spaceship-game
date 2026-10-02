@@ -18,6 +18,33 @@ const BULLET_SPEED = 600;     // pixels per second
 const MONSTER_SPEED = 80;     // pixels per second
 const SECONDS_BETWEEN_MONSTERS = 1.5;
 
+// Stamina is measured in percentage points (0–100).
+const STAMINA = {
+  costPerShot: 10,
+  rechargeSeconds: 5,       // time from empty to full, after the delay
+  rechargeDelaySeconds: 0.3,
+  green: '#85B700',
+  yellow: '#F3D55B',
+  red: '#D75A4A',
+};
+
+// Silhouette outlines in the original SVG coordinates. Decorative exhaust is excluded.
+const PLAYER_OUTLINE = [
+  [50, 1], [56, 6], [99, 75], [99, 90], [79, 86],
+  [79, 93], [69, 93], [69, 86], [60, 83], [60, 89],
+  [40, 89], [40, 83], [31, 85], [31, 93], [21, 93],
+  [21, 87], [1, 90], [1, 75], [44, 6],
+];
+// Three separate pieces preserve the transparent gaps between the meteor trails.
+const METEOR_OUTLINES = [
+  [[3,19],[6,22],[6,30],[8,35],[12,36],[16,35],[18,30],[18,14],
+   [21,11],[24,14],[24,65],[22,71],[17,76],[12,77],[6,75],[1,70],[0,65],[0,22]],
+  [[35,5],[39,9],[39,18],[41,23],[46,24],[50,22],[52,18],[52,5],
+   [56,1],[60,5],[60,70],[58,77],[52,83],[46,85],[38,83],[32,77],[30,70],[30,9]],
+  [[71,8],[76,12],[76,30],[77,33],[79,33],[82,30],[82,20],
+   [85,17],[88,20],[88,55],[85,62],[78,65],[71,63],[67,57],[67,12]],
+];
+
 // Visual effects only. Distances are game pixels; durations are milliseconds.
 const FEEL = {
   recoilPx: 3,
@@ -59,6 +86,8 @@ const staminaRingEl = document.getElementById('stamina-ring');
 // =====================================================
 // GAME STATE — everything that changes while playing
 // =====================================================
+let stamina = 100;
+let rechargeDelayRemaining = 0;
 let playerX = PLAYER_START_X;
 let bullets = [];      // each bullet: { el, x, y, width, height }
 let monsters = [];     // each monster or meteor: { el, x, y, width, height, hp, isMeteor }
@@ -101,7 +130,8 @@ function startGame() {
   gameOverEl.hidden = true;
   isPausedByPlayer = false;
   pauseOverlayEl.hidden = true;
-  setStamina(1);
+  rechargeDelayRemaining = 0;
+  setStamina(100);
   playerEl.style.width = PLAYER_WIDTH + 'px';
   playerEl.style.height = PLAYER_HEIGHT + 'px';
   placeElement(playerEl, playerX, PLAYER_Y);
@@ -132,6 +162,7 @@ function gameLoop(now) {
   let lossAt = checkBulletHits();
   if (lossAt === null && meteorHitPlayer()) lossAt = 1;
   elapsedTime += dt * 1000 * (lossAt ?? 1);
+  rechargeStamina(dt * (lossAt ?? 1));
   updateTimer();
 
   if (lossAt !== null) {
@@ -156,6 +187,9 @@ function movePlayer(dt) {
 }
 
 function shoot() {
+  if (!isRunning || isPaused || isPausedByPlayer || stamina + 1e-9 < STAMINA.costPerShot) return;
+  setStamina(stamina - STAMINA.costPerShot);
+  rechargeDelayRemaining = STAMINA.rechargeDelaySeconds;
   showShotEffect();
   const el = document.createElement('div');
   el.className = 'bullet';
@@ -282,20 +316,66 @@ function checkBulletHits() {
   return lossAt;
 }
 
-// Is the spaceship touching any meteor?
+// Broad rectangle check first, then compare actual silhouette outlines.
 function meteorHitPlayer() {
   const player = { x: playerX, y: PLAYER_Y, width: PLAYER_WIDTH, height: PLAYER_HEIGHT };
-  return monsters.some(m => m.isMeteor && isTouching(m, player));
+  const shipOutline = worldOutline(PLAYER_OUTLINE, player, 101, 102);
+  return monsters.some(m => m.isMeteor && isTouching(m, player) &&
+    METEOR_OUTLINES.some(outline => outlinesOverlap(
+      shipOutline, worldOutline(outline, m, 88, 85))));
+}
+
+function worldOutline(points, object, svgWidth, svgHeight) {
+  return points.map(([x, y]) => [
+    object.x + x * object.width / svgWidth,
+    object.y + y * object.height / svgHeight,
+  ]);
+}
+
+// Supports concave outlines, so empty corners and gaps stay non-colliding.
+function outlinesOverlap(a, b) {
+  const cross = (p, q, r) => (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]);
+  const onSegment = (p, q, r) => Math.abs(cross(p, q, r)) < 1e-8 &&
+    r[0] >= Math.min(p[0], q[0]) && r[0] <= Math.max(p[0], q[0]) &&
+    r[1] >= Math.min(p[1], q[1]) && r[1] <= Math.max(p[1], q[1]);
+  for (let i = 0; i < a.length; i++) {
+    const p = a[i], q = a[(i + 1) % a.length];
+    for (let j = 0; j < b.length; j++) {
+      const r = b[j], s = b[(j + 1) % b.length];
+      const c1 = cross(p, q, r), c2 = cross(p, q, s);
+      const c3 = cross(r, s, p), c4 = cross(r, s, q);
+      if ((c1 * c2 < 0 && c3 * c4 < 0) ||
+          onSegment(p, q, r) || onSegment(p, q, s) ||
+          onSegment(r, s, p) || onSegment(r, s, q)) return true;
+    }
+  }
+  const inside = (point, polygon) => {
+    let result = false;
+    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+      const [x1, y1] = polygon[i], [x2, y2] = polygon[j];
+      if ((y1 > point[1]) !== (y2 > point[1]) &&
+          point[0] < (x2 - x1) * (point[1] - y1) / (y2 - y1) + x1) result = !result;
+    }
+    return result;
+  };
+  return inside(a[0], b) || inside(b[0], a);
 }
 
 
 // =====================================================
-// STAMINA RING — visual only for now
+// STAMINA — trim the existing ring; no extra UI
 // =====================================================
-// 1 = full ring, 0.5 = half, 0 = empty. Call it any time to trim or refill.
 function setStamina(amount) {
-  const clamped = Math.max(0, Math.min(1, amount));
-  staminaRingEl.style.strokeDashoffset = 100 * (1 - clamped);
+  stamina = Math.max(0, Math.min(100, amount));
+  staminaRingEl.style.strokeDashoffset = 100 - stamina;
+  staminaRingEl.style.stroke = stamina >= 60 ? STAMINA.green :
+    stamina >= 25 ? STAMINA.yellow : STAMINA.red;
+}
+
+function rechargeStamina(dt) {
+  const rechargeTime = Math.max(0, dt - rechargeDelayRemaining);
+  rechargeDelayRemaining = Math.max(0, rechargeDelayRemaining - dt);
+  setStamina(stamina + rechargeTime * 100 / STAMINA.rechargeSeconds);
 }
 
 
